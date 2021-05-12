@@ -23,10 +23,13 @@ def assemble(stream, count):
         number |= (bit << i)
     return number
 
-def running_assembly(stream):
+def running_assembly(stream, invert):
     number = 0
     for i,bit in enumerate(stream):
-        number = (number << 1) | bit
+        if invert:
+            number = (number << 1) | bit
+        else:
+            number |= (bit << i)
         yield number, i+1
 
 # this code could be slimmer if dict creation happens outside of this function
