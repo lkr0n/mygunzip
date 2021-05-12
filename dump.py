@@ -79,18 +79,18 @@ def print_huffmancode(huffman_tree):
     for code, character in huffman_tree.items():
         number, length = code
         binstr = bin(number)[2:].rjust(length, '0')
-        print(character,'=', binstr, length)
-
+        print(character,'=', binstr, '=', number, length)
 
 if __name__ == '__main__':
+    gzip_header_len = 0xa
 
-    with open('gunzip.c.gz', 'rb') as fobj:
+    with open('test.gz', 'rb') as fobj:
         gz = fobj.read()
 
     stream = bitstream(gz)
 
     # skip gzip header
-    drop(stream, 0x13 * 8)
+    drop(stream, gzip_header_len * 8)
     
     # read in deflate block header
     def_header = DeflateHeader(
