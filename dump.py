@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-code_length_alphabet = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15]
+rle_alphabet = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15]
 
 # TODO:  bitstream class
 # TODO:  parse gzip header correctly
@@ -53,14 +53,30 @@ def construct_huffman(alphabet, code_lengths):
     
     return huffman_code
 
-def huf_decode(stream, hufman_code: dict):
-    code = None
-    for code in running_assembly(stream):
+def decode_codelengths(stream, huf_code, count):
+    codelengths = []
+    while len(codelengths) < count:
+
+        # decode huffman enccoding
+        rle_code = decode_huf(stream, huf_code)
+
+        # decode run length encoding
+        codes = [rle_code]
+        if rle_code == 16:
+            codes = [codelengths[-1]] * (assemble(stream, 2) + 3)
+        elif rle_code == 17:
+            codes = [0] * (assemble(stream, 3) + 3)
+        elif rle_code == 18:
+            codes = [0] * (assemble(stream, 7) + 11)
+
+        codelengths += codes
+    return codelengths
+
+def decode_huf(stream,  hufman_code: dict, invert=True):
+    for code in running_assembly(stream, invert):
         if code in hufman_code:
-            break
-    else:
-        return None
-    return hufman_code[code]
+            return hufman_code[code]
+    return None
 
 @dataclass
 class DeflateHeader:
@@ -101,33 +117,28 @@ if __name__ == '__main__':
         assemble(stream, 5),
         assemble(stream, 5),
         assemble(stream, 4))
-    
+
     # read in code lengths for the code alphabet
-    codelengths = [assemble(stream, 3) for _ in range(4 + def_header.hclen)]
+    rle_codelengths = [assemble(stream, 3) for _ in range(4 + def_header.hclen)]
 
     # construct huffman tree to decode code lengths for literal/length and distance alphabets
-    huf_code = construct_huffman(code_length_alphabet, codelengths)
+    huf_code = construct_huffman(rle_alphabet, rle_codelengths)
     print_huffmancode(huf_code)
     
-    # decode (huffman + run-length) encoded codelengths for (literal/length + distance) huffman code
-    j = 0
-    rle_codelengths = []
-    while len(rle_codelengths) < (257 + def_header.hlit + def_header.hdist):
-        
-        # decode huffman enccoding
-        rle_code = huf_decode(stream, huf_code)
+    # decode (huffman + run-length) encoded codelengths for literal/length  huffman code
+    litlen_codelengths = decode_codelengths(stream, huf_code, 257 + def_header.hlit)
 
-        # decode run length encoding
-        codes = [rle_code]
-        if rle_code == 16:
-            codes = [rle_codelengths[-1]] * (assemble(stream, 2) + 3)
-        elif rle_code == 17:
-            codes = [0] * (assemble(stream, 3) + 3)
-        elif rle_code == 18:
-            codes = [0] * (assemble(stream, 7) + 11)
-
-        rle_codelengths += codes
-        j += 1
+    # decode (huffman + run-length) encoded codelengths for distance huffman code
+    dist_codelengths = decode_codelengths(stream, huf_code, def_header.hdist + 1)
     
-    print(rle_codelengths)
-    print(j) # == 138, agrees with value from infinite partition
+    # recreate huffman codes from the code lenghts
+    litlen_huf_code = construct_huffman(range(257 + def_header.hlit), litlen_codelengths)
+    dist_huf_code = construct_huffman(range(def_header.hdist +1), dist_codelengths)
+
+    print_huffmancode(litlen_huf_code)
+    print_huffmancode(dist_huf_code)
+
+    print((x := decode_huf(stream, litlen_huf_code, invert=False)))
+    print(chr(x))
+    print((x := decode_huf(stream, litlen_huf_code, invert=False)))
+    print(chr(x))
