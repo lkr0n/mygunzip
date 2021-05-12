@@ -32,14 +32,13 @@ def running_assembly(stream, invert):
             number |= (bit << i)
         yield number, i+1
 
-# this code could be slimmer if dict creation happens outside of this function
-# TODO: handle code length zero
 def construct_huffman(alphabet, code_lengths):
 
     # collect characters in alphabet of the same code length into list 
     char_by_code_len = dict()
     for character, length in zip(alphabet, code_lengths):
-        char_by_code_len.setdefault(length, []).append(character)  
+        if length:
+            char_by_code_len.setdefault(length, []).append(character)
     
     # recreate huffman codes from code lenghts
     huffman_code = dict()
