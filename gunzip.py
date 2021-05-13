@@ -135,13 +135,6 @@ class DeflateHeader:
     hdist:  int
     hclen:  int
 
-    @classmethod
-    def fromStream(cls, stream):
-        return cls( assemble(stream, 1),
-                    assemble(stream, 2),
-                    assemble(stream, 5),
-                    assemble(stream, 5),
-                    assemble(stream, 4))
 
 class FLG(IntFlag):
     FTEXT   = 1
@@ -165,31 +158,37 @@ class GzipHeader:
     comment:    str     = None
     crc:        int     = 0
 
-    @classmethod
-    def fromStream(cls, stream):
-        kwargs = dict()
+def deflate_header_from_stream(stream):
+    return DeflateHeader( assemble(stream, 1),
+                          assemble(stream, 2),
+                          assemble(stream, 5),
+                          assemble(stream, 5),
+                          assemble(stream, 4))
 
-        magic   = (assemble(stream, 8), assemble(stream, 8))
-        cm      = assemble(stream, 8)
-        flg     = assemble(stream, 8)
-        mtime   = assemble(stream, 32)
-        xfl     = assemble(stream, 8)
-        os      = assemble(stream, 8)
+def gzip_header_from_stream(stream):
+    kwargs = dict()
 
-        if flg & FLG.FEXTRA:
-            kwargs['xlen']      = assemble(stream, 8)
-            kwargs['xlenbytes'] = assemble(stream, kwargs['xlen'])
+    magic   = (assemble(stream, 8), assemble(stream, 8))
+    cm      = assemble(stream, 8)
+    flg     = assemble(stream, 8)
+    mtime   = assemble(stream, 32)
+    xfl     = assemble(stream, 8)
+    os      = assemble(stream, 8)
 
-        if flg & FLG.FNAME:
-            kwargs['fname'] = decode_cstring(stream)
+    if flg & FLG.FEXTRA:
+        kwargs['xlen']      = assemble(stream, 8)
+        kwargs['xlenbytes'] = assemble(stream, kwargs['xlen'])
 
-        if flg & FLG.FCOMMENT:
-            kwargs['comment'] = decode_cstring(stream)
+    if flg & FLG.FNAME:
+        kwargs['fname'] = decode_cstring(stream)
 
-        if flg & FLG.FHCRC:
-            kwargs['crc'] = assemble(stream, 8)
+    if flg & FLG.FCOMMENT:
+        kwargs['comment'] = decode_cstring(stream)
 
-        return cls(magic, cm, flg, mtime, xfl, os, **kwargs)
+    if flg & FLG.FHCRC:
+        kwargs['crc'] = assemble(stream, 8)
+
+    return GzipHeader(magic, cm, flg, mtime, xfl, os, **kwargs)
 
 def print_huffman_code(hufman_code):
     print("sym", "dec", "bin", "length", sep='\t')
@@ -211,10 +210,10 @@ if __name__ == '__main__':
 
     stream = bitstream(gz)
 
-    gz_header = GzipHeader.fromStream(stream)
+    gz_header = gzip_header_from_stream(stream)
     
     # read in deflate block header
-    def_header = DeflateHeader.fromStream(stream)
+    def_header = deflate_header_from_stream(stream)
 
     # read in code lengths for the code alphabet
     rle_codelengths = [assemble(stream, 3) for _ in range(4 + def_header.hclen)]
