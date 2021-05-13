@@ -1,12 +1,9 @@
 from dataclasses import dataclass
 from enum import IntFlag
+from argparse import ArgumentParser
 
 rle_alphabet = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15]
 
-# TODO: add arg parser
-
-# the values in the length_extra_bits can be computed with the following formula:
-#f = lambda x: 3 + 2 ** (x // 4 + 1) * ((x % 4) + 4)
 length_offset = {257:  3, 258:  4, 259:  5, 260:  6, 261:  7, 262:  8, 263:  9, 264: 10,
                  265: 11, 266: 13, 267: 15, 268: 17, 269: 19, 270: 23, 271: 27,
                  272: 31, 273: 35, 274: 43, 275: 51, 276: 59, 277: 67, 278: 83,
@@ -17,10 +14,6 @@ distance_offset = [1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 25
 def take(it, count):
     for _ in range(count):
         yield next(it)
-
-def drop(it, count):
-    for _ in take(it, count):  
-        pass
 
 def bitstream(buffer: bytes):
     for byte in buffer:
@@ -196,21 +189,12 @@ class GzipHeader:
 
         return cls(magic, cm, flg, mtime, xfl, os, **kwargs)
 
+if __name__ == '__min__':
 
-# NOTE: I do not consider this nice code but this just a debugging function anyway.
-def bits_to_str(stream, count: int, length = 8, sep=' '):
-    bytes_val = ( take(stream, length)    for _ in range(count) ) # generator of bit generators = byte generator
-    bytes_str = ( ''.join(map(str, byte)) for byte in bytes_val )
-    return sep.join(bytes_str)
-
-def print_huffmancode(huffman_tree):
-    for code, character in huffman_tree.items():
-        length, number = code
-        binstr = bin(number)[2:].rjust(length, '0')
-        print(character,'=', binstr, '=', number, length)
-
-if __name__ == '__main__':
-    filename = 'test.gz'
+    parser = argparse.ArgumentParser(description='small gunzip implementation')
+    parser.add_argument('file', type=str, help='unzip the given file')
+    args = parser.parse_args()
+    filname = args.file
 
     with open(filename, 'rb') as fobj:
         gz = fobj.read()
@@ -227,7 +211,6 @@ if __name__ == '__main__':
 
     # construct huffman tree to decode code lengths for literal/length and distance alphabets
     huf_code = construct_huffman(rle_alphabet, rle_codelengths)
-    print_huffmancode(huf_code)
     
     # decode (huffman + run-length) encoded codelengths for literal/length  huffman code
     litlen_codelengths = decode_codelengths(stream, huf_code, 257 + def_header.hlit)
@@ -238,9 +221,6 @@ if __name__ == '__main__':
     # recreate huffman codes from the code lenghts
     litlen_huf_code = construct_huffman(range(257 + def_header.hlit), litlen_codelengths)
     dist_huf_code = construct_huffman(range(def_header.hdist + 1), dist_codelengths)
-
-    print_huffmancode(litlen_huf_code)
-    print_huffmancode(dist_huf_code)
 
     # inflate the date using the previously constructed huffman codes
     uncompressed_data = inflate(stream, litlen_huf_code, dist_huf_code)
