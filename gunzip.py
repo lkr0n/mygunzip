@@ -1,3 +1,4 @@
+#!/usr/bin/python
 from dataclasses import dataclass
 from enum import IntFlag
 from argparse import ArgumentParser
