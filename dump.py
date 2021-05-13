@@ -63,6 +63,12 @@ def construct_huffman(alphabet, code_lengths):
     
     return huffman_code
 
+def decode_cstring(stream):
+    string = []
+    while (byte := assemble(stream, 8)):
+        string.append(chr(byte))
+    return ''.join(string)
+
 def decode_codelengths(stream, huf_code, count):
     codelengths = []
     while len(codelengths) < count:
@@ -72,6 +78,7 @@ def decode_codelengths(stream, huf_code, count):
 
         # decode run length encoding
         codes = [rle_code]
+
         if rle_code == 16:
             codes = [codelengths[-1]] * (assemble(stream, 2) + 3)
         elif rle_code == 17:
@@ -133,6 +140,63 @@ class DeflateHeader:
     hdist:  int
     hclen:  int
 
+    @classmethod
+    def fromStream(cls, stream):
+        return cls( assemble(stream, 1),
+                    assemble(stream, 2),
+                    assemble(stream, 5),
+                    assemble(stream, 5),
+                    assemble(stream, 4))
+
+class FLG(IntFlag):
+    FTEXT   = 1
+    FHCRC   = 2
+    FEXTRA  = 4
+    FNAME   = 8
+    FCOMMENT=16
+
+@dataclass
+class GzipHeader:
+
+    magic:      tuple
+    cm:         int
+    flg:        int
+    mtime:      int
+    xfl:        int
+    os:         int
+    xlen:       int     = 0
+    xlenbytes:  int     = 0
+    fname:      str     = None
+    comment:    str     = None
+    crc:        int     = 0
+
+    @classmethod
+    def fromStream(cls, stream):
+        kwargs = dict()
+
+        magic   = (assemble(stream, 8), assemble(stream, 8))
+        cm      = assemble(stream, 8)
+        flg     = assemble(stream, 8)
+        mtime   = assemble(stream, 32)
+        xfl     = assemble(stream, 8)
+        os      = assemble(stream, 8)
+
+        if flg & FLG.FEXTRA:
+            kwargs['xlen']      = assemble(stream, 8)
+            kwargs['xlenbytes'] = assemble(stream, kwargs['xlen'])
+
+        if flg & FLG.FNAME:
+            kwargs['fname'] = decode_cstring(stream)
+
+        if flg & FLG.FCOMMENT:
+            kwargs['comment'] = decode_cstring(stream)
+
+        if flg & FLG.FHCRC:
+            kwargs['crc'] = assemble(stream, 8)
+
+        return cls(magic, cm, flg, mtime, xfl, os, **kwargs)
+
+
 # NOTE: I do not consider this nice code but this just a debugging function anyway.
 def bits_to_str(stream, count: int, length = 8, sep=' '):
     bytes_val = ( take(stream, length)    for _ in range(count) ) # generator of bit generators = byte generator
@@ -141,28 +205,22 @@ def bits_to_str(stream, count: int, length = 8, sep=' '):
 
 def print_huffmancode(huffman_tree):
     for code, character in huffman_tree.items():
-        number, length = code
+        length, number = code
         binstr = bin(number)[2:].rjust(length, '0')
         print(character,'=', binstr, '=', number, length)
 
 if __name__ == '__main__':
-    gzip_header_len = 0xa
+    filename = 'test.gz'
 
-    with open('test.gz', 'rb') as fobj:
+    with open(filename, 'rb') as fobj:
         gz = fobj.read()
 
     stream = bitstream(gz)
 
-    # skip gzip header
-    drop(stream, gzip_header_len * 8)
+    gz_header = GzipHeader.fromStream(stream)
     
     # read in deflate block header
-    def_header = DeflateHeader(
-        assemble(stream, 1),
-        assemble(stream, 2),
-        assemble(stream, 5),
-        assemble(stream, 5),
-        assemble(stream, 4))
+    def_header = DeflateHeader.fromStream(stream)
 
     # read in code lengths for the code alphabet
     rle_codelengths = [assemble(stream, 3) for _ in range(4 + def_header.hclen)]
@@ -179,12 +237,19 @@ if __name__ == '__main__':
     
     # recreate huffman codes from the code lenghts
     litlen_huf_code = construct_huffman(range(257 + def_header.hlit), litlen_codelengths)
-    dist_huf_code = construct_huffman(range(def_header.hdist +1), dist_codelengths)
+    dist_huf_code = construct_huffman(range(def_header.hdist + 1), dist_codelengths)
 
     print_huffmancode(litlen_huf_code)
     print_huffmancode(dist_huf_code)
 
-    print((x := decode_huf(stream, litlen_huf_code, invert=False)))
-    print(chr(x))
-    print((x := decode_huf(stream, litlen_huf_code, invert=False)))
-    print(chr(x))
+    # inflate the date using the previously constructed huffman codes
+    uncompressed_data = inflate(stream, litlen_huf_code, dist_huf_code)
+
+    # write the uncompressed data to disk
+    outfilename = filename.removesuffix('.gz')
+
+    if gz_header.fname:
+        outfilename = gz_header.fname
+
+    with open(outfilename, 'wb') as fobj:
+        fobj.write(uncompressed_data)
