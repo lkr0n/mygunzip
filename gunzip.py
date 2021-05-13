@@ -191,12 +191,20 @@ class GzipHeader:
 
         return cls(magic, cm, flg, mtime, xfl, os, **kwargs)
 
-if __name__ == '__min__':
+def print_huffman_code(hufman_code):
+    print("sym", "dec", "bin", "length", sep='\t')
+    for code, char in hufman_code.items():
+        length, code =  code
+        binstr = bin(code)[2:].rjust(length, '0')
+        print(char, code, binstr, length, sep='\t')
 
-    parser = argparse.ArgumentParser(description='small gunzip implementation')
-    parser.add_argument('file', type=str, help='unzip the given file')
+if __name__ == '__main__':
+
+    parser = ArgumentParser(description='small gunzip implementation')
+    parser.add_argument('--file', required=True, type=str, help='file to unzip' )
+    parser.add_argument('--verbose', action='store_const', const=True, default=False, help='verbose output')
     args = parser.parse_args()
-    filname = args.file
+    filename = args.file
 
     with open(filename, 'rb') as fobj:
         gz = fobj.read()
@@ -235,3 +243,11 @@ if __name__ == '__min__':
 
     with open(outfilename, 'wb') as fobj:
         fobj.write(uncompressed_data)
+
+    if args.verbose:
+        print("Huffman Code for Codelengths")
+        print_huffman_code(huf_code)
+        print("Huffman Code for Literal/Length Symbols")
+        print_huffman_code(litlen_huf_code)
+        print("Huffman Code for Distance Symbols")
+        print_huffman_code(dist_huf_code)
