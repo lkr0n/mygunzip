@@ -1,9 +1,19 @@
 from dataclasses import dataclass
+from enum import IntFlag
 
 rle_alphabet = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15]
 
-# TODO:  bitstream class
-# TODO:  parse gzip header correctly
+# TODO: add arg parser
+
+# the values in the length_extra_bits can be computed with the following formula:
+#f = lambda x: 3 + 2 ** (x // 4 + 1) * ((x % 4) + 4)
+length_offset = {257:  3, 258:  4, 259:  5, 260:  6, 261:  7, 262:  8, 263:  9, 264: 10,
+                 265: 11, 266: 13, 267: 15, 268: 17, 269: 19, 270: 23, 271: 27,
+                 272: 31, 273: 35, 274: 43, 275: 51, 276: 59, 277: 67, 278: 83,
+                 279: 99, 280: 115, 281: 131, 282: 163, 283: 195, 284: 227, 285: 258}
+
+distance_offset = [1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577]
+
 def take(it, count):
     for _ in range(count):
         yield next(it)
@@ -23,14 +33,11 @@ def assemble(stream, count):
         number |= (bit << i)
     return number
 
-def running_assembly(stream, invert):
+def running_assembly(stream):
     number = 0
-    for i,bit in enumerate(stream):
-        if invert:
-            number = (number << 1) | bit
-        else:
-            number |= (bit << i)
-        yield number, i+1
+    for bit in stream:
+        number = (number << 1) | bit
+        yield number
 
 def construct_huffman(alphabet, code_lengths):
 
@@ -43,13 +50,16 @@ def construct_huffman(alphabet, code_lengths):
     # recreate huffman codes from code lenghts
     huffman_code = dict()
     min_code = 0
-    for length in sorted(char_by_code_len):
-        characters = char_by_code_len[length]
+    for length in range(max(char_by_code_len) + 1):
+        if length in char_by_code_len:
+            characters = char_by_code_len[length]
 
-        for i, character in enumerate(sorted(characters)):
-            huffman_code[ (min_code + i, length) ] = character
+            for i, character in enumerate(sorted(characters)):
+                huffman_code[ (length, min_code + i) ] = character
 
-        min_code = (min_code + len(characters)) << 1
+            min_code = (min_code + len(characters)) << 1
+        else:
+            min_code <<= 1
     
     return huffman_code
 
@@ -72,11 +82,47 @@ def decode_codelengths(stream, huf_code, count):
         codelengths += codes
     return codelengths
 
-def decode_huf(stream,  hufman_code: dict, invert=True):
-    for code in running_assembly(stream, invert):
+def decode_huf(stream,  hufman_code: dict):
+    prefix_generator = running_assembly(stream)
+    for code in enumerate(prefix_generator, start=1):
         if code in hufman_code:
             return hufman_code[code]
     return None
+
+def inflate(stream, litlen_huf_code, dist_huf_code):
+    uncompressed_data = bytearray()
+
+    # read in from literal/len alphabet until end of block symbol
+    while (symbol := decode_huf(stream, litlen_huf_code)) != 256:
+
+        if symbol > 256:
+
+            length   = 0
+            distance = 0
+
+            # parse length symbol
+            if 265 <= symbol < 285:
+                length = assemble(stream, (symbol - 261) // 4)
+            length  += length_offset[symbol]
+
+            # parse backwards distance symbol
+            dist_symbol = decode_huf(stream, dist_huf_code)
+            if 4 <= dist_symbol:
+                distance = assemble(stream, (dist_symbol - 2) // 2)
+            distance += distance_offset[dist_symbol]
+
+            # deflate length, distance pair
+            if distance <= length:
+                data_slice = uncompressed_data[-distance:]
+                for i in range(length):
+                    uncompressed_data.append(data_slice[i % distance])
+            else:
+                uncompressed_data += uncompressed_data[-distance:-distance+length]
+        else:
+            # output literal
+            uncompressed_data.append(symbol)
+
+    return uncompressed_data
 
 @dataclass
 class DeflateHeader:
