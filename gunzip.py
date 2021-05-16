@@ -14,11 +14,13 @@ distance_offset = [1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 25
 fixed_huf_codelengths = 144*[8] + 112*[9] + 24*[7] + 8*[8]
 fixed_litlen_alphabet = range(288)
 
+# deflate header block types
 NO_COMPRESSION = 0
 FIXED          = 1
 DYNAMIC        = 2
 RESREVED       = 3
 
+# gzip header flags
 FTEXT          = 1
 FHCRC          = 2
 FEXTRA         = 4
@@ -248,6 +250,7 @@ if __name__ == '__main__':
 
     elif def_header.btype == FIXED:
 
+        # build the fixed huffman codes then inflate the compressed data
         litlen_fixed_huf_code = construct_huffman(fixed_litlen_alphabet, fixed_huf_codelengths)
         dist_huf_code = { (5, dist_code): dist_code  for dist_code in range(32) }
 
