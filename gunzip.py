@@ -1,6 +1,7 @@
 #!/usr/bin/python
 from dataclasses import dataclass
 from argparse import ArgumentParser
+from zlib import crc32
 import sys
 
 rle_alphabet = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15]
@@ -260,6 +261,17 @@ if __name__ == '__main__':
         sys.exit("Error: btype = 0 not implemented yet")
     else:
         sys.exit("Error: invalid block type")
+
+    # parse and validate the gzip trailer
+    trailer_stream  = bitstream(gz[-8:])
+    crc             = to_number(trailer_stream, 32)
+    isize           = to_number(trailer_stream, 32)
+
+    if crc32(uncompressed_data) != crc:
+        sys.exit("Error: invalid checksum")
+
+    if isize != len(uncompressed_data):
+        sys.exit("Error: invalid uncompressed data size")
 
     # write the uncompressed data to disk
     outfilename = args.file.removesuffix('.gz')
