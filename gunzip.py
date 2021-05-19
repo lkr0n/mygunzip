@@ -221,6 +221,11 @@ if __name__ == '__main__':
     gz_header  = gzip_header_from_stream(stream)
     def_header = deflate_header_from_stream(stream)
 
+    # parse and validate gzip trailer
+    trailer_stream  = bitstream(gz[-8:])
+    crc             = to_number(trailer_stream, 32)
+    isize           = to_number(trailer_stream, 32)
+
     uncompressed_data = bytes()
 
     if def_header.btype == DYNAMIC:
@@ -262,11 +267,7 @@ if __name__ == '__main__':
     else:
         sys.exit("Error: invalid block type")
 
-    # parse and validate the gzip trailer
-    trailer_stream  = bitstream(gz[-8:])
-    crc             = to_number(trailer_stream, 32)
-    isize           = to_number(trailer_stream, 32)
-
+    # validate the uncompressed data
     if crc32(uncompressed_data) != crc:
         sys.exit("Error: invalid checksum")
 
