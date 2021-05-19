@@ -263,7 +263,8 @@ if __name__ == '__main__':
         uncompressed_data = inflate(stream, litlen_fixed_huf_code, dist_huf_code)
 
     elif def_header.btype == NO_COMPRESSION:
-        sys.exit("Error: btype = 0 not implemented yet")
+        # restore the uncompressed block using its size
+        uncompressed_data = gz[-8 - isize: -8]
     else:
         sys.exit("Error: invalid block type")
 
